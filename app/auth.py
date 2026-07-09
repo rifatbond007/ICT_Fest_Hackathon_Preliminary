@@ -23,6 +23,9 @@ from .models import User
 # longer be used.
 _revoked_tokens: set[str] = set()
 
+# Refresh tokens that have already been used (single-use enforcement, Rule 8).
+_used_refresh_tokens: set[str] = set()
+
 _PBKDF2_ROUNDS = 100_000
 
 
@@ -47,7 +50,7 @@ def _now_ts() -> int:
 
 def create_access_token(user: User) -> str:
     iat = _now_ts()
-    lifetime = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES * 60)
+    lifetime = timedelta(seconds=900)
     payload = {
         "sub": str(user.id),
         "org": user.org_id,
@@ -84,6 +87,14 @@ def decode_token(token: str) -> dict:
 
 def revoke_access_token(payload: dict) -> None:
     _revoked_tokens.add(payload["jti"])
+
+
+def consume_refresh_token(payload: dict) -> None:
+    """Mark a refresh token as used; raise 401 if already consumed."""
+    jti = payload["jti"]
+    if jti in _used_refresh_tokens:
+        raise AppError(401, "UNAUTHORIZED", "Refresh token already used")
+    _used_refresh_tokens.add(jti)
 
 
 def get_token_payload(request: Request) -> dict:

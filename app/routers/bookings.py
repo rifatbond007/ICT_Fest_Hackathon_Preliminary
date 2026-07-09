@@ -97,16 +97,19 @@ def create_booking(
             start_time=start,
             end_time=end,
             status="confirmed",
-            reference_code=reference.next_reference_code(),
+            reference_code="PENDING",
             price_cents=price_cents,
             created_at=now,
         )
         db.add(booking)
+        db.flush()  # get the auto-assigned id
+        booking.reference_code = reference.reference_code_for(booking.id)
         db.commit()
         db.refresh(booking)
 
     stats.record_create(room.id, price_cents)
     cache.invalidate_availability(room.id, start.date().isoformat())
+    cache.invalidate_report(user.org_id)
     notifications.notify_created(booking)
 
     return serialize_booking(booking)
@@ -119,9 +122,7 @@ def list_bookings(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    base = db.query(Booking).join(Room).filter(Room.org_id == user.org_id)
-    if user.role != "admin":
-        base = base.filter(Booking.user_id == user.id)
+    base = db.query(Booking).join(Room).filter(Room.org_id == user.org_id, Booking.user_id == user.id)
     total = base.count()
     items = (
         base.order_by(Booking.start_time.asc(), Booking.id.asc())
