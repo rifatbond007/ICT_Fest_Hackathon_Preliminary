@@ -122,7 +122,9 @@ def list_bookings(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    base = db.query(Booking).join(Room).filter(Room.org_id == user.org_id, Booking.user_id == user.id)
+    base = db.query(Booking).join(Room).filter(Room.org_id == user.org_id)
+    if user.role != "admin":
+        base = base.filter(Booking.user_id == user.id)
     total = base.count()
     items = (
         base.order_by(Booking.start_time.asc(), Booking.id.asc())
@@ -151,6 +153,8 @@ def get_booking(
         .first()
     )
     if booking is None:
+        raise AppError(404, "BOOKING_NOT_FOUND", "Booking not found")
+    if user.role != "admin" and booking.user_id != user.id:
         raise AppError(404, "BOOKING_NOT_FOUND", "Booking not found")
 
     response = serialize_booking(booking)
